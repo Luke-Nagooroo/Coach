@@ -57,6 +57,34 @@ class GeminiHandler:
         response = self.model.generate_content(prompt)
         return response.text
 
+    def analyze_cv_image(self, image_bytes, mime_type='image/png'):
+        if USE_MOCK:
+            return {
+                'skills': ['Communication', 'Problem solving'],
+                'experience': ['Example Corp - Software Engineer'],
+                'years_of_experience': 3,
+                'key_strengths': ['Clear layout', 'Relevant experience']
+            }
+
+        prompt = """
+        Analyze this CV image and provide a JSON response with:
+        - skills: list of technical skills
+        - experience: list of past roles and companies
+        - years_of_experience: total years
+        - key_strengths: top 3 strengths based on CV
+
+        Return only valid JSON, no additional text.
+        """
+
+        response = self.model.generate_content([
+            prompt,
+            {
+                'mime_type': mime_type,
+                'data': image_bytes,
+            },
+        ])
+        return response.text
+
     def generate_interview_question(self, role, cv_analysis, question_count=0):
         if USE_MOCK:
             # Return a deterministic question based on role and count

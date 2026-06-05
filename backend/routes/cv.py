@@ -29,22 +29,29 @@ def upload_cv():
     filename = (file.filename or '').lower()
     content_type = (file.content_type or '').lower()
 
-    # Image files (jpg, jpeg, png) -> OCR with pytesseract
+    # Image files (jpg, jpeg, png) -> send directly to Gemini vision
     if filename.endswith(('.png', '.jpg', '.jpeg')) or content_type.startswith('image/'):
         try:
-            from PIL import Image
-            import pytesseract
-            import io
+            image_mime = content_type if content_type.startswith('image/') else (
+                'image/jpeg' if filename.endswith(('.jpg', '.jpeg')) else 'image/png'
+            )
+            analysis = gemini.analyze_cv_image(content, image_mime)
 
-            img = Image.open(io.BytesIO(content))
-            cv_text = pytesseract.image_to_string(img)
-            cv_text = cv_text.strip()
-            if not cv_text:
-                return jsonify({'error': 'Could not extract text from the image. Try a clearer image or a text-based PDF.'}), 400
+            user_id = request.form.get('user_id', 'default')
+            cv_storage[user_id] = {
+                'raw_text': '[image uploaded]',
+                'analysis': analysis
+            }
+
+            return jsonify({
+                'success': True,
+                'analysis': analysis,
+                'user_id': user_id
+            })
         except Exception as e:
-            return jsonify({'error': f'OCR error: {str(e)}. Ensure Pillow and pytesseract are installed and Tesseract is available on PATH.'}), 500
+            return jsonify({'error': f'Failed to analyze image CV: {str(e)}'}), 500
 
-    # If PDF, attempt to extract text using PyPDF2, else OCR via pdf2image+pytesseract if available
+    # If PDF, attempt to extract text using PyPDF2
     elif filename.endswith('.pdf') or content_type == 'application/pdf' or 'pdf' in filename:
         try:
             from PyPDF2 import PdfReader
@@ -60,28 +67,13 @@ def upload_cv():
             cv_text = ''
 
         if not cv_text:
-            # Try OCR fallback using pdf2image + pytesseract if available
-            try:
-                from pdf2image import convert_from_bytes
-                from PIL import Image
-                import pytesseract
-                images = convert_from_bytes(content)
-                texts = []
-                for img in images:
-                    page_text = pytesseract.image_to_string(img) or ''
-                    texts.append(page_text)
-                cv_text = '\n'.join(texts).strip()
-                if not cv_text:
-                    return jsonify({'error': 'Could not extract text from PDF (it may be scanned or image-only).'}), 400
-            except Exception as e:
-                # Couldn't OCR; prompt user to provide a text-based PDF or install OCR dependencies
-                return jsonify({'error': 'PDF appears to be image-based and OCR fallback is not available. To enable OCR for PDFs, install `pdf2image` and system `poppler`, plus `pytesseract` and Tesseract OCR.'}), 400
+            return jsonify({'error': 'PDF appears to be image-based or empty. Please upload a text-based PDF or convert the PDF pages to images and upload those instead.'}), 400
 
     else:
         try:
             cv_text = content.decode('utf-8')
         except Exception:
-            return jsonify({'error': 'Could not read file. Please use a text file, a text-based PDF, or an image (PNG/JPG) for OCR.'}), 400
+            return jsonify({'error': 'Could not read file. Please use a text file, a text-based PDF, or an image (PNG/JPG).'}), 400
 
     try:
         # Analyze CV with Gemini
