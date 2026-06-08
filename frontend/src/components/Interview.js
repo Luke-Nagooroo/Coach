@@ -6,8 +6,6 @@ function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQu
   const [answer, setAnswer] = useState('');
   const [loading, setLoading] = useState(false);
   const [questionNumber, setQuestionNumber] = useState(initialQuestionNumber || 1);
-  const [evaluation, setEvaluation] = useState(null);
-  const [showFeedback, setShowFeedback] = useState(false);
 
   useEffect(() => {
     // If an initial question was not provided, fetch the session's current question
@@ -32,16 +30,9 @@ function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQu
         answer: answer
       });
 
-      setEvaluation(response.data.evaluation);
       setQuestion(response.data.next_question);
       setQuestionNumber(response.data.question_number);
       setAnswer('');
-      setShowFeedback(true);
-
-      // Hide feedback after 3 seconds, then show next question
-      setTimeout(() => {
-        setShowFeedback(false);
-      }, 3000);
     } catch (err) {
       alert('Error: ' + (err.response?.data?.error || err.message));
     } finally {
@@ -49,46 +40,57 @@ function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQu
     }
   };
 
+  const handleEndInterview = async () => {
+    try {
+      const response = await axios.post('/api/interview/end-interview', {
+        session_id: sessionId
+      });
+
+      onInterviewEnd(response.data.final_review || null, response.data);
+    } catch (err) {
+      alert('Error ending interview: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
   return (
-    <div className="card">
-      <h2>Step 3: Interview - {role}</h2>
+    <div className="card interview-card">
+      <div className="section-header">
+        <div>
+          <p className="eyebrow">Step 3</p>
+          <h2>Interview for {role}</h2>
+        </div>
+        <div className="question-pill">Question {questionNumber}</div>
+      </div>
+
       <div className="interview-container">
         <div className="question-section">
-          <p className="question-number">Question {questionNumber}</p>
+          <p className="section-label">Current prompt</p>
           <p className="question-text">{question}</p>
         </div>
 
-        {showFeedback && evaluation && (
-          <div className="feedback-box">
-            <h4>Feedback</h4>
-            <p>{evaluation}</p>
-          </div>
-        )}
-
-        {!showFeedback && (
-          <div className="answer-section">
-            <textarea
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-              placeholder="Type your answer here..."
-              disabled={loading}
-            />
-            <button onClick={handleSubmitAnswer} disabled={loading}>
+        <div className="answer-section">
+          <label className="section-label" htmlFor="answer-box">Your answer</label>
+          <textarea
+            id="answer-box"
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            placeholder="Type your answer here..."
+            disabled={loading}
+          />
+          <div className="action-row">
+            <button onClick={handleSubmitAnswer} disabled={loading} className="primary-button">
               {loading ? 'Processing...' : 'Submit Answer'}
             </button>
             {questionNumber > 1 && (
               <button
-                onClick={() => {
-                  axios.post('/api/interview/end-interview', { session_id: sessionId });
-                  onInterviewEnd();
-                }}
-                className="end-button"
+                onClick={handleEndInterview}
+                className="end-button secondary-button"
               >
                 End Interview
               </button>
             )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

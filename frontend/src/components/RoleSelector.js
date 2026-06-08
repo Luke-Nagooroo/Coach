@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-function RoleSelector({ userId, onRoleSelected }) {
+function RoleSelector({ userId, cvAnalysis, onRoleSelected }) {
   const roles = [
     'Software Engineer',
     'Data Scientist',
@@ -18,7 +18,8 @@ function RoleSelector({ userId, onRoleSelected }) {
     try {
       const response = await axios.post('/api/interview/start', {
         role: role,
-        user_id: userId
+        user_id: userId,
+        cv_analysis: cvAnalysis
       });
       // Pass initial question and question number through to the app
       onRoleSelected(

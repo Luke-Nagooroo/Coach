@@ -2,19 +2,27 @@ import React, { useState } from 'react';
 import CVUpload from './components/CVUpload';
 import RoleSelector from './components/RoleSelector';
 import Interview from './components/Interview';
+import CVReview from './components/CVReview';
+import FinalReview from './components/FinalReview';
 import './App.css';
 
 function App() {
-  const [stage, setStage] = useState('upload'); // 'upload', 'role-select', 'interview', 'feedback'
-  const [userId, setUserId] = useState(`user_${Date.now()}`);
-  const [cvAnalysis, setCvAnalysis] = useState(null);
+  const [stage, setStage] = useState('upload'); // 'upload', 'cv-review', 'role-select', 'interview', 'feedback'
+  const [userId] = useState(`user_${Date.now()}`);
   const [selectedRole, setSelectedRole] = useState(null);
   const [sessionId, setSessionId] = useState(null);
   const [initialQuestion, setInitialQuestion] = useState(null);
   const [initialQuestionNumber, setInitialQuestionNumber] = useState(1);
+  const [cvAnalysis, setCvAnalysis] = useState(null);
+  const [finalReview, setFinalReview] = useState(null);
+  const [interviewSummary, setInterviewSummary] = useState(null);
 
   const handleCVUploaded = (analysis) => {
     setCvAnalysis(analysis);
+    setStage('cv-review');
+  };
+
+  const handleContinueFromReview = () => {
     setStage('role-select');
   };
 
@@ -26,7 +34,9 @@ function App() {
     setStage('interview');
   };
 
-  const handleInterviewEnd = () => {
+  const handleInterviewEnd = (review, summary) => {
+    setFinalReview(review);
+    setInterviewSummary(summary);
     setStage('feedback');
   };
 
@@ -34,6 +44,7 @@ function App() {
     <div className="app">
       <header className="header">
         <h1>🎓 AI Interview Coach</h1>
+        <p>Upload a CV, pick a role, and practice with structured Gemini feedback that highlights strengths, gaps, and next steps.</p>
       </header>
 
       <main className="container">
@@ -41,8 +52,12 @@ function App() {
           <CVUpload userId={userId} onUploadSuccess={handleCVUploaded} />
         )}
 
+        {stage === 'cv-review' && (
+          <CVReview analysis={cvAnalysis} onContinue={handleContinueFromReview} />
+        )}
+
         {stage === 'role-select' && (
-          <RoleSelector userId={userId} onRoleSelected={handleRoleSelected} />
+          <RoleSelector userId={userId} cvAnalysis={cvAnalysis} onRoleSelected={handleRoleSelected} />
         )}
 
         {stage === 'interview' && (
@@ -56,11 +71,11 @@ function App() {
         )}
 
         {stage === 'feedback' && (
-          <div className="feedback-section">
-            <h2>Interview Complete! 🎉</h2>
-            <p>Check back soon for detailed feedback.</p>
-            <button onClick={() => window.location.reload()}>Start New Interview</button>
-          </div>
+          <FinalReview
+            review={finalReview}
+            summary={interviewSummary}
+            onRestart={() => window.location.reload()}
+          />
         )}
       </main>
     </div>
