@@ -1,11 +1,16 @@
 from flask import Blueprint, request, jsonify
 from utils.gemini_handler import gemini
 import json
+import os
+import uuid
+from flask import send_from_directory
 
 interview_bp = Blueprint('interview', __name__)
 
 # Store interview sessions in memory
 sessions = {}
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), '..', 'uploads')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @interview_bp.route('/start', methods=['POST'])
 def start_interview():
@@ -73,9 +78,12 @@ def submit_answer():
         )
 
         # Store answer
+        # Include optional audio filename if provided in the request
+        audio_file = request.json.get('audio_file') if request.is_json else None
         session['answers'].append({
             'question': current_question,
             'answer': answer,
+            'audio_file': audio_file,
             'evaluation': evaluation
         })
 
@@ -121,3 +129,27 @@ def end_interview():
         'answers': session['answers'],
         'final_review': final_review
     })
+
+
+@interview_bp.route('/upload-audio', methods=['POST'])
+def upload_audio():
+    """Accept audio file uploads (multipart/form-data with 'audio'). Returns a filename key."""
+    if 'audio' not in request.files:
+        return jsonify({'error': 'No audio file'}), 400
+
+    f = request.files['audio']
+    if f.filename == '':
+        return jsonify({'error': 'Empty filename'}), 400
+
+    ext = os.path.splitext(f.filename)[1] or '.webm'
+    filename = f"{uuid.uuid4().hex}{ext}"
+    save_path = os.path.join(UPLOAD_DIR, filename)
+    f.save(save_path)
+
+    return jsonify({'success': True, 'filename': filename})
+
+
+@interview_bp.route('/audio/<filename>', methods=['GET'])
+def serve_audio(filename):
+    # Security: only serve files from UPLOAD_DIR
+    return send_from_directory(UPLOAD_DIR, filename)
