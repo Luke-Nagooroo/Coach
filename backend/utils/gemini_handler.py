@@ -22,7 +22,7 @@ class GeminiHandler:
     def __init__(self):
         if not USE_MOCK:
             # Default to a non-Pro/free model that is commonly available
-            model_id = os.getenv('GEMINI_MODEL', 'models/gemini-1.5-flash')
+            model_id = os.getenv('GEMINI_MODEL', 'models/gemini-2.5-flash-lite')
             self.model = genai.GenerativeModel(model_id)
 
     def _build_cv_review_prompt(self, cv_content, content_type='text'):
