@@ -81,6 +81,11 @@ textarea {
   line-height: 1;
 }
 
+.header {
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  padding-bottom: 1rem;
+}
+
 .header p {
   margin: 0.8rem auto 0;
   max-width: 700px;
@@ -105,6 +110,11 @@ textarea {
   border-radius: 28px;
   box-shadow: var(--shadow);
   backdrop-filter: blur(20px);
+}
+
+.voice-recorder .recorder-controls button,
+.voice-recorder .recorder-playback button {
+  margin-right: 0.5rem;
 }
 
 .card {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import VoiceRecorder from './VoiceRecorder';
 
 function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQuestionNumber }) {
   const [question, setQuestion] = useState(initialQuestion || null);
@@ -27,7 +28,8 @@ function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQu
     try {
       const response = await axios.post('/api/interview/submit-answer', {
         session_id: sessionId,
-        answer: answer
+        answer: answer,
+        audio_file: audioFilename || null,
       });
 
       setQuestion(response.data.next_question);
@@ -38,6 +40,13 @@ function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQu
     } finally {
       setLoading(false);
     }
+  };
+
+  const [audioFilename, setAudioFilename] = useState(null);
+
+  const handleAudioUploaded = (filename) => {
+    setAudioFilename(filename);
+    // keep the filename attached to next submit
   };
 
   const handleEndInterview = async () => {
@@ -69,6 +78,7 @@ function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQu
         </div>
 
         <div className="answer-section">
+          <VoiceRecorder onUploaded={handleAudioUploaded} />
           <label className="section-label" htmlFor="answer-box">Your answer</label>
           <textarea
             id="answer-box"
