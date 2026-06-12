@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import VoiceRecorder from './VoiceRecorder';
 
-function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQuestionNumber }) {
+function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQuestionNumber, initialQuestionSource }) {
   const [question, setQuestion] = useState(initialQuestion || null);
   const [answer, setAnswer] = useState('');
   const [loading, setLoading] = useState(false);
   const [questionNumber, setQuestionNumber] = useState(initialQuestionNumber || 1);
+  const [questionSource, setQuestionSource] = useState(initialQuestionSource || 'local');
+  const [audioFilename, setAudioFilename] = useState(null);
+  const [audioTranscript, setAudioTranscript] = useState('');
 
   useEffect(() => {
     // If an initial question was not provided, fetch the session's current question
@@ -19,8 +22,8 @@ function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQu
   }, [initialQuestion, initialQuestionNumber]);
 
   const handleSubmitAnswer = async () => {
-    if (!answer.trim()) {
-      alert('Please provide an answer');
+    if (!answer.trim() && !audioFilename) {
+      alert('Please type an answer or upload a recording');
       return;
     }
 
@@ -28,13 +31,17 @@ function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQu
     try {
       const response = await axios.post('/api/interview/submit-answer', {
         session_id: sessionId,
-        answer: answer,
+        answer: answer.trim(),
         audio_file: audioFilename || null,
+        transcript: audioTranscript,
       });
 
       setQuestion(response.data.next_question);
       setQuestionNumber(response.data.question_number);
+      setQuestionSource(response.data.question_source || 'local');
       setAnswer('');
+      setAudioFilename(null);
+      setAudioTranscript('');
     } catch (err) {
       alert('Error: ' + (err.response?.data?.error || err.message));
     } finally {
@@ -42,11 +49,9 @@ function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQu
     }
   };
 
-  const [audioFilename, setAudioFilename] = useState(null);
-
-  const handleAudioUploaded = (filename) => {
+  const handleAudioUploaded = (filename, transcript) => {
     setAudioFilename(filename);
-    // keep the filename attached to next submit
+    setAudioTranscript(transcript || '');
   };
 
   const handleEndInterview = async () => {
@@ -73,22 +78,39 @@ function Interview({ sessionId, role, onInterviewEnd, initialQuestion, initialQu
 
       <div className="interview-container">
         <div className="question-section">
-          <p className="section-label">Current prompt</p>
+          <div className="question-meta">
+            <p className="section-label">Current prompt</p>
+            <span className={`question-source question-source--${questionSource}`}>
+              {questionSource === 'gemini' ? 'Gemini question' : 'Local fallback'}
+            </span>
+          </div>
           <p className="question-text">{question}</p>
         </div>
 
         <div className="answer-section">
-          <VoiceRecorder onUploaded={handleAudioUploaded} />
+          <VoiceRecorder
+            key={questionNumber}
+            onUploaded={handleAudioUploaded}
+          />
+          {audioFilename && (
+            <p className="upload-success">
+              Recording uploaded and ready as your answer.
+            </p>
+          )}
           <label className="section-label" htmlFor="answer-box">Your answer</label>
           <textarea
             id="answer-box"
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
-            placeholder="Type your answer here..."
+            placeholder="Type an answer, or upload a recording above..."
             disabled={loading}
           />
           <div className="action-row">
-            <button onClick={handleSubmitAnswer} disabled={loading} className="primary-button">
+            <button
+              onClick={handleSubmitAnswer}
+              disabled={loading || (!answer.trim() && !audioFilename)}
+              className="primary-button"
+            >
               {loading ? 'Processing...' : 'Submit Answer'}
             </button>
             {questionNumber > 1 && (

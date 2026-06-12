@@ -117,6 +117,109 @@ textarea {
   margin-right: 0.5rem;
 }
 
+.recorder-device {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.recorder-device select {
+  width: min(100%, 30rem);
+  padding: 0.65rem 0.75rem;
+  color: var(--text);
+  background: rgba(8, 13, 27, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.audio-level {
+  width: min(100%, 30rem);
+  height: 0.65rem;
+  margin-top: 0.75rem;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.audio-level span {
+  display: block;
+  height: 100%;
+  background: #34d399;
+  transition: width 80ms linear;
+}
+
+.recorder-playback audio {
+  width: min(100%, 30rem);
+  margin-top: 0.9rem;
+}
+
+.upload-success {
+  margin: 0.7rem 0;
+  color: #6ee7b7 !important;
+  font-weight: 600;
+}
+
+.voice-transcript {
+  width: min(100%, 30rem);
+  margin: 0.65rem 0 0 !important;
+  color: var(--text) !important;
+  font-size: 0.92rem;
+}
+
+.answer-review {
+  margin-top: 1.25rem;
+}
+
+.answer-review__list {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.answer-review__item {
+  padding: 1.1rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.answer-review__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.55rem;
+  color: #8ef2c5;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.answer-review__item h3 {
+  margin-bottom: 0.9rem;
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+
+.answer-review__label {
+  margin-bottom: 0.25rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.answer-review__transcript {
+  color: var(--text) !important;
+  white-space: pre-wrap;
+}
+
+.answer-review__item audio {
+  width: min(100%, 36rem);
+  margin-top: 0.8rem;
+}
+
 .card {
   padding: 1.6rem;
   animation: floatUp 420ms ease-out;
@@ -350,6 +453,27 @@ button:disabled {
 
 .question-section {
   padding: 1.3rem;
+}
+
+.question-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.question-source {
+  padding: 0.25rem 0.45rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.question-source--gemini {
+  color: #8ef2c5;
+  border-color: rgba(52, 211, 153, 0.35);
 }
 
 .question-text {

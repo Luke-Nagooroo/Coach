@@ -18,7 +18,7 @@ function CVReview({ analysis, onContinue }) {
         </div>
 
         <div className="review-score">
-          <span>Readiness</span>
+          <span>CV Readiness</span>
           <strong>{Number.isFinite(readinessScore) ? readinessScore : 0}</strong>
           <small>out of 100</small>
         </div>

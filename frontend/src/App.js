@@ -13,6 +13,7 @@ function App() {
   const [sessionId, setSessionId] = useState(null);
   const [initialQuestion, setInitialQuestion] = useState(null);
   const [initialQuestionNumber, setInitialQuestionNumber] = useState(1);
+  const [initialQuestionSource, setInitialQuestionSource] = useState('local');
   const [cvAnalysis, setCvAnalysis] = useState(null);
   const [finalReview, setFinalReview] = useState(null);
   const [interviewSummary, setInterviewSummary] = useState(null);
@@ -26,11 +27,12 @@ function App() {
     setStage('role-select');
   };
 
-  const handleRoleSelected = (role, sessionId, question, questionNumber) => {
+  const handleRoleSelected = (role, sessionId, question, questionNumber, questionSource) => {
     setSelectedRole(role);
     setSessionId(sessionId);
     setInitialQuestion(question || null);
     setInitialQuestionNumber(questionNumber || 1);
+    setInitialQuestionSource(questionSource || 'local');
     setStage('interview');
   };
 
@@ -66,6 +68,7 @@ function App() {
             role={selectedRole}
             initialQuestion={initialQuestion}
             initialQuestionNumber={initialQuestionNumber}
+            initialQuestionSource={initialQuestionSource}
             onInterviewEnd={handleInterviewEnd}
           />
         )}

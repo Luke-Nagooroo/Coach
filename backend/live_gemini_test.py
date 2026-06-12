@@ -17,9 +17,10 @@ os.environ['GEMINI_MOCK'] = '0'
 from utils.gemini_handler import gemini
 try:
     q = gemini.generate_interview_question('backend', '', 0)
-    print('OK_RESPONSE_START')
+    source = gemini.last_request_source
+    print(f'{source.upper()}_RESPONSE_START')
     print(q)
-    print('OK_RESPONSE_END')
+    print(f'{source.upper()}_RESPONSE_END')
 except Exception as e:
     print('ERROR_RESPONSE_START')
     print(str(e))

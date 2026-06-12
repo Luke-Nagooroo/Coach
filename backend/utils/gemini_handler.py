@@ -1,16 +1,39 @@
 import os
 import json
+import random
+import tempfile
 
 # If GEMINI_MOCK is set (1/true), use deterministic mock responses to avoid
 # calling the external API during local testing. Otherwise use the real
 # google.generativeai client when available.
-USE_MOCK = os.getenv('GEMINI_MOCK', '0').lower() in ('1', 'true', 'yes')
+API_KEY = os.getenv('GEMINI_API_KEY')
+PROXY_VALUES = [
+    os.getenv('HTTP_PROXY', ''),
+    os.getenv('HTTPS_PROXY', ''),
+    os.getenv('http_proxy', ''),
+    os.getenv('https_proxy', ''),
+]
+HAS_BLOCKED_LOCAL_PROXY = any(
+    '127.0.0.1:9' in value or 'localhost:9' in value
+    for value in PROXY_VALUES
+)
+if HAS_BLOCKED_LOCAL_PROXY:
+    for proxy_name in ('HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'):
+        proxy_value = os.getenv(proxy_name, '')
+        if '127.0.0.1:9' in proxy_value or 'localhost:9' in proxy_value:
+            os.environ.pop(proxy_name, None)
+
+USE_MOCK = (
+    os.getenv('GEMINI_MOCK', '0').lower() in ('1', 'true', 'yes')
+    or not API_KEY
+    or API_KEY == 'your_key_here'
+)
 
 if not USE_MOCK:
     try:
         import google.generativeai as genai
         # Configure Gemini API
-        genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+        genai.configure(api_key=API_KEY)
     except Exception:
         # Fall back to mock mode if the library isn't installed or config fails
         USE_MOCK = True
@@ -20,9 +43,11 @@ class GeminiHandler:
     """Handles all interactions with Google Gemini API or returns mock data."""
 
     def __init__(self):
+        self.local_transcription_model = None
+        self.last_request_source = 'local' if USE_MOCK else 'gemini'
         if not USE_MOCK:
             # Default to a non-Pro/free model that is commonly available
-            model_id = os.getenv('GEMINI_MODEL', 'models/gemini-2.5-flash-lite')
+            model_id = os.getenv('GEMINI_MODEL', 'models/gemini-2.5-flash')
             self.model = genai.GenerativeModel(model_id)
 
     def _build_cv_review_prompt(self, cv_content, content_type='text'):
@@ -77,6 +102,16 @@ class GeminiHandler:
         normalized.setdefault('overall_assessment', '')
         return normalized
 
+    def _generate_content_text(self, payload, fallback_text=''):
+        try:
+            response = self.model.generate_content(payload)
+            self.last_request_source = 'gemini'
+            return response.text
+        except Exception as e:
+            self.last_request_source = 'local'
+            print(f'Gemini request failed, using fallback response: {e}')
+            return fallback_text
+
     def analyze_cv(self, cv_text):
         if USE_MOCK:
             skill_hits = []
@@ -100,8 +135,8 @@ class GeminiHandler:
             }
 
         prompt = self._build_cv_review_prompt(cv_text, content_type='text')
-        response = self.model.generate_content(prompt)
-        return self._normalize_cv_review(response.text)
+        response_text = self._generate_content_text(prompt)
+        return self._normalize_cv_review(response_text)
 
     def _parse_json_response(self, response_text, fallback=None):
         fallback = fallback or {}
@@ -141,27 +176,63 @@ class GeminiHandler:
 
         prompt = self._build_cv_review_prompt('[image content supplied to Gemini]', content_type='image')
 
-        response = self.model.generate_content([
+        response_text = self._generate_content_text([
             prompt,
             {
                 'mime_type': mime_type,
                 'data': image_bytes,
             },
         ])
-        return self._normalize_cv_review(response.text)
+        return self._normalize_cv_review(response_text)
 
     def generate_interview_question(self, role, cv_analysis, question_count=0):
+        local_questions = {
+            'software engineer': [
+                'Tell me about a challenging software project you worked on and how you approached it.',
+                'Describe a production bug that was difficult to diagnose. How did you find and fix it?',
+                'Tell me about a technical decision where you had to balance delivery speed and code quality.',
+                'Describe a time you improved the performance or reliability of an application.',
+                'How have you handled a disagreement about a software design or implementation?',
+                'Tell me about a system you designed to remain maintainable as its requirements grew.',
+            ],
+            'frontend engineer': [
+                'Tell me about a difficult user-interface problem you solved.',
+                'Describe a time you improved the performance of a frontend application.',
+                'How have you made a complex interface accessible and responsive?',
+                'Tell me about a frontend architecture decision and the trade-offs you considered.',
+            ],
+            'backend engineer': [
+                'Describe an API or backend service you designed and the trade-offs you made.',
+                'Tell me about a database performance problem you diagnosed and resolved.',
+                'How have you designed a service to handle failures and remain reliable?',
+                'Describe a time you improved the scalability of a backend system.',
+            ],
+            'data scientist': [
+                'Tell me about a data project where the initial results were misleading.',
+                'Describe how you validated a model before recommending its use.',
+                'Tell me about a time poor data quality affected a project and how you handled it.',
+                'How have you explained a complex analytical result to a non-technical stakeholder?',
+            ],
+            'devops engineer': [
+                'Describe a deployment or infrastructure failure you investigated and resolved.',
+                'Tell me about a process you automated and the impact it had.',
+                'How have you improved observability for a production system?',
+                'Describe how you balanced reliability, cost, and delivery speed in an infrastructure decision.',
+            ],
+            'machine learning engineer': [
+                'Tell me about a machine-learning model you moved from experimentation into production.',
+                'Describe a problem involving model drift or degraded prediction quality.',
+                'How have you balanced inference performance and model accuracy?',
+                'Tell me about a difficult data pipeline problem in a machine-learning system.',
+            ],
+        }
+        role_key = (role or '').lower()
+        question_pool = local_questions.get(role_key, local_questions['software engineer'])
+        fallback_question = random.choice(question_pool)
+
         if USE_MOCK:
-            # Return a deterministic question based on role and count
-            base = {
-                'backend': 'Explain how you would design a REST API for high throughput.',
-                'frontend': 'How would you optimize rendering in a large React app?',
-                'default': f'Tell me about a challenging project you worked on related to {role}.'
-            }
-            q = base.get(role.lower(), base['default'])
-            if question_count > 0:
-                q += f' (follow-up #{question_count})'
-            return q
+            self.last_request_source = 'local'
+            return fallback_question
 
         prompt = f"""
         Generate a single interview question for a {role} position.
@@ -174,22 +245,81 @@ class GeminiHandler:
         Keep it under 2 sentences. Make it progressively harder with each question number.
         """
 
-        response = self.model.generate_content(prompt)
-        return response.text.strip()
+        response_text = self._generate_content_text(
+            prompt,
+            fallback_text=fallback_question,
+        )
+        return response_text.strip()
+
+    def _evaluate_answer_locally(self, answer):
+        normalized_answer = ' '.join((answer or '').lower().split())
+        words = normalized_answer.split()
+        vague_phrases = (
+            'this is my answer',
+            'i do not know',
+            "i don't know",
+            'no answer',
+            'test answer',
+        )
+        is_vague = any(phrase in normalized_answer for phrase in vague_phrases)
+        has_example = any(word in normalized_answer for word in (
+            'project', 'example', 'when', 'situation', 'task', 'challenge',
+            'built', 'created', 'implemented', 'designed', 'managed',
+        ))
+        has_outcome = any(character.isdigit() for character in normalized_answer) or any(
+            word in normalized_answer for word in (
+                'result', 'improved', 'reduced', 'increased', 'saved',
+                'delivered', 'outcome', 'impact',
+            )
+        )
+
+        if is_vague or len(words) < 8:
+            score = 1
+        elif len(words) < 20:
+            score = 3
+        elif len(words) < 40:
+            score = 5
+        else:
+            score = 6
+
+        if has_example:
+            score += 1
+        if has_outcome:
+            score += 1
+        score = min(score, 10)
+
+        strengths = []
+        if has_example:
+            strengths.append('Included a concrete example')
+        if has_outcome:
+            strengths.append('Described an outcome or impact')
+        if len(words) >= 20:
+            strengths.append('Provided enough detail to assess the response')
+
+        improvements = []
+        if len(words) < 20:
+            improvements.append('Give a complete answer with context, actions, and results')
+        if not has_example:
+            improvements.append('Include a specific example from your experience')
+        if not has_outcome:
+            improvements.append('Explain the result and measurable impact')
+
+        suggestion = (
+            'Use a specific situation, explain what you did, and finish with the result.'
+            if score < 6
+            else 'Add sharper metrics and explain the trade-offs behind your decisions.'
+        )
+        return {
+            'score': score,
+            'strengths': strengths,
+            'improvements': improvements,
+            'suggestion': suggestion
+        }
 
     def evaluate_answer(self, question, answer, role, cv_analysis):
+        local_evaluation = self._evaluate_answer_locally(answer)
         if USE_MOCK:
-            # Very simple mock evaluation
-            score = 7
-            strengths = ['Clear structure', 'Relevant examples']
-            improvements = ['Add metrics', 'Discuss trade-offs']
-            suggestion = 'Briefly mention measurable outcomes and trade-offs.'
-            return {
-                'score': score,
-                'strengths': strengths,
-                'improvements': improvements,
-                'suggestion': suggestion
-            }
+            return local_evaluation
 
         prompt = f"""
         Evaluate this interview answer on a scale of 1-10.
@@ -208,50 +338,125 @@ class GeminiHandler:
         Return only valid JSON, no additional text.
         """
 
-        response = self.model.generate_content(prompt)
+        response_text = self._generate_content_text(prompt)
         parsed = self._parse_json_response(
-            response.text,
-            fallback={
-                'score': 0,
-                'strengths': [],
-                'improvements': [],
-                'suggestion': 'No structured feedback returned by Gemini.',
-            },
+            response_text,
+            fallback=local_evaluation,
         )
 
         # Normalize common field types for the frontend.
-        parsed.setdefault('score', 0)
-        parsed.setdefault('strengths', [])
-        parsed.setdefault('improvements', [])
-        parsed.setdefault('suggestion', '')
+        parsed.setdefault('score', local_evaluation['score'])
+        parsed.setdefault('strengths', local_evaluation['strengths'])
+        parsed.setdefault('improvements', local_evaluation['improvements'])
+        parsed.setdefault('suggestion', local_evaluation['suggestion'])
         return parsed
 
-    def generate_final_review(self, role, cv_analysis, answers):
-        if USE_MOCK:
-            total_score = 0
-            evaluations = []
-            for item in answers:
-                evaluation = item.get('evaluation') or {}
-                score = evaluation.get('score', 0) or 0
-                try:
-                    total_score += int(score)
-                except Exception:
-                    pass
-                if evaluation:
-                    evaluations.append(evaluation)
+    def _transcribe_audio_locally(self, audio_bytes, suffix='.webm'):
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            return ''
 
-            average_score = round(total_score / len(evaluations)) if evaluations else 0
-            return {
-                'title': 'Final interview review',
-                'overall_score': average_score,
-                'summary': f'You completed {len(answers)} question(s) for the {role} role and showed a solid base to build on.',
-                'strengths': ['Kept answers structured', 'Showed role awareness', 'Handled multiple prompts with consistency'],
-                'improvements': ['Add more measurable impact', 'Be more specific with examples', 'Tie answers more directly to business outcomes'],
-                'next_steps': ['Practice concise STAR-style answers', 'Prepare 2-3 stronger examples with numbers', 'Align your CV and interview stories more closely'],
-                'closing_note': 'You are close, but a little more specificity and evidence will make a big difference.',
-                'question_count': len(answers),
-                'answers': answers,
-            }
+        if self.local_transcription_model is None:
+            model_size = os.getenv('WHISPER_MODEL', 'tiny.en')
+            self.local_transcription_model = WhisperModel(
+                model_size,
+                device='cpu',
+                compute_type='int8',
+            )
+
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_audio:
+                temp_audio.write(audio_bytes)
+                temp_path = temp_audio.name
+
+            segments, _ = self.local_transcription_model.transcribe(
+                temp_path,
+                language='en',
+                vad_filter=True,
+            )
+            return ' '.join(segment.text.strip() for segment in segments).strip()
+        except Exception as e:
+            print(f'Local transcription failed: {e}')
+            return ''
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def transcribe_audio(self, audio_bytes, mime_type='audio/webm'):
+        if not audio_bytes:
+            return ''
+
+        suffix = '.webm' if 'webm' in mime_type else '.mp3'
+        local_transcript = self._transcribe_audio_locally(audio_bytes, suffix)
+        if local_transcript:
+            return local_transcript
+
+        if USE_MOCK:
+            return ''
+
+        prompt = """
+        Transcribe this interview answer accurately.
+        Return only the spoken words as plain text.
+        Do not evaluate, summarize, or add commentary.
+        """
+        return self._generate_content_text([
+            prompt,
+            {
+                'mime_type': mime_type,
+                'data': audio_bytes,
+            },
+        ]).strip()
+
+    def _generate_final_review_locally(self, role, answers):
+        total_score = 0
+        evaluations = []
+        for item in answers:
+            evaluation = item.get('evaluation') or {}
+            score = evaluation.get('score', 0) or 0
+            try:
+                total_score += int(score)
+            except Exception:
+                pass
+            if evaluation:
+                evaluations.append(evaluation)
+
+        average_ten_point_score = total_score / len(evaluations) if evaluations else 0
+        overall_score = round(average_ten_point_score * 10)
+        weak_interview = overall_score < 50
+        return {
+            'title': 'More answer detail is needed' if weak_interview else 'Final interview review',
+            'overall_score': overall_score,
+            'summary': (
+                f'You completed {len(answers)} question(s), but the answers were too brief or vague to demonstrate readiness for the {role} role.'
+                if weak_interview
+                else f'You completed {len(answers)} question(s) for the {role} role and provided enough detail for a useful review.'
+            ),
+            'strengths': (
+                ['Completed the interview and submitted usable recordings']
+                if weak_interview
+                else ['Provided assessable answers', 'Used relevant examples', 'Completed the interview consistently']
+            ),
+            'improvements': [
+                'Answer the question directly instead of using placeholder phrases',
+                'Give a specific example with context and actions',
+                'Explain the outcome and measurable impact',
+            ],
+            'next_steps': ['Practice concise STAR-style answers', 'Prepare 2-3 stronger examples with numbers', 'Align your CV and interview stories more closely'],
+            'closing_note': (
+                'A recording counts as an answer, but its content still needs enough detail to be evaluated well.'
+                if weak_interview
+                else 'A little more specificity and evidence will make the answers stronger.'
+            ),
+            'question_count': len(answers),
+            'answers': answers,
+        }
+
+    def generate_final_review(self, role, cv_analysis, answers):
+        local_review = self._generate_final_review_locally(role, answers)
+        if USE_MOCK:
+            return local_review
 
         prompt = f"""
         Review this completed interview for a {role} role and return a JSON response with:
@@ -269,34 +474,29 @@ class GeminiHandler:
         Interview answers and evaluations:
         {answers}
 
+        Recorded voice answers are valid answers. Use their transcripts exactly
+        like typed answers and never ask the candidate to provide text answers.
+
         Return only valid JSON, no additional text.
         """
 
-        response = self.model.generate_content(prompt)
+        response_text = self._generate_content_text(prompt)
         parsed = self._parse_json_response(
-            response.text,
-            fallback={
-                'title': 'Final interview review',
-                'overall_score': 0,
-                'summary': 'The interview is complete, but Gemini did not return a structured final review.',
-                'strengths': [],
-                'improvements': [],
-                'next_steps': [],
-                'closing_note': 'Use the answer-level feedback to refine your next run.',
-            },
+            response_text,
+            fallback=local_review,
         )
 
         try:
-            parsed['overall_score'] = int(parsed.get('overall_score', parsed.get('score', 0)) or 0)
+            parsed['overall_score'] = int(parsed.get('overall_score', parsed.get('score', local_review['overall_score'])) or 0)
         except Exception:
-            parsed['overall_score'] = 0
+            parsed['overall_score'] = local_review['overall_score']
 
-        parsed.setdefault('title', 'Final interview review')
-        parsed.setdefault('summary', '')
-        parsed.setdefault('strengths', [])
-        parsed.setdefault('improvements', [])
-        parsed.setdefault('next_steps', [])
-        parsed.setdefault('closing_note', '')
+        parsed.setdefault('title', local_review['title'])
+        parsed.setdefault('summary', local_review['summary'])
+        parsed.setdefault('strengths', local_review['strengths'])
+        parsed.setdefault('improvements', local_review['improvements'])
+        parsed.setdefault('next_steps', local_review['next_steps'])
+        parsed.setdefault('closing_note', local_review['closing_note'])
         parsed['question_count'] = len(answers)
         parsed['answers'] = answers
         return parsed

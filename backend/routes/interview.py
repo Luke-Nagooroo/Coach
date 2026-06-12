@@ -34,19 +34,22 @@ def start_interview():
         'user_id': user_id,
         'cv_analysis': cv_analysis,
         'questions_asked': 0,
-        'answers': []
+        'answers': [],
+        'questions': [],
     }
 
     try:
         # Generate first question
         question = gemini.generate_interview_question(role, cv_analysis, 0)
         sessions[session_id]['current_question'] = question
+        sessions[session_id]['questions'].append(question)
 
         return jsonify({
             'success': True,
             'session_id': session_id,
             'question': question,
-            'question_number': 1
+            'question_number': 1,
+            'question_source': gemini.last_request_source,
         })
     except Exception as e:
         return jsonify({'error': f'Failed to generate question: {str(e)}'}), 500
@@ -60,47 +63,76 @@ def submit_answer():
     """
     data = request.json
     session_id = data.get('session_id')
-    answer = data.get('answer')
+    answer = (data.get('answer') or '').strip()
+    transcript = (data.get('transcript') or '').strip()
+    audio_file = data.get('audio_file')
 
     if session_id not in sessions:
         return jsonify({'error': 'Invalid session'}), 400
 
+    if not answer and not audio_file:
+        return jsonify({'error': 'Type an answer or upload a recording'}), 400
+
+    if audio_file:
+        safe_audio_file = os.path.basename(audio_file)
+        audio_path = os.path.join(UPLOAD_DIR, safe_audio_file)
+        if safe_audio_file != audio_file or not os.path.isfile(audio_path):
+            return jsonify({'error': 'Uploaded recording could not be found'}), 400
+        audio_file = safe_audio_file
+
+        if not answer and not transcript:
+            extension = os.path.splitext(audio_file)[1].lower()
+            mime_type = 'audio/webm' if extension == '.webm' else 'audio/mpeg'
+            with open(audio_path, 'rb') as audio:
+                transcript = gemini.transcribe_audio(audio.read(), mime_type)
+
     session = sessions[session_id]
+    effective_answer = answer or transcript
+    evaluation_answer = effective_answer or (
+        'The candidate submitted a valid audio answer, but automatic transcription was unavailable.'
+    )
 
     try:
         # Evaluate the answer
         current_question = session.get('current_question')
         evaluation = gemini.evaluate_answer(
             current_question,
-            answer,
+            evaluation_answer,
             session['role'],
             session.get('cv_analysis', 'CV analysis would go here')
         )
 
-        # Store answer
-        # Include optional audio filename if provided in the request
-        audio_file = request.json.get('audio_file') if request.is_json else None
         session['answers'].append({
             'question': current_question,
-            'answer': answer,
+            'answer': effective_answer,
+            'transcript': transcript,
             'audio_file': audio_file,
             'evaluation': evaluation
         })
 
         # Generate next question
         session['questions_asked'] += 1
-        next_question = gemini.generate_interview_question(
-            session['role'],
-            session.get('cv_analysis', 'CV analysis'),
-            session['questions_asked']
-        )
+        previous_questions = session.setdefault('questions', [])
+        next_question = None
+        for _ in range(6):
+            candidate = gemini.generate_interview_question(
+                session['role'],
+                session.get('cv_analysis', 'CV analysis'),
+                session['questions_asked']
+            )
+            if candidate not in previous_questions:
+                next_question = candidate
+                break
+        next_question = next_question or candidate
         session['current_question'] = next_question
+        previous_questions.append(next_question)
 
         return jsonify({
             'success': True,
             'evaluation': evaluation,
             'next_question': next_question,
-            'question_number': session['questions_asked'] + 1
+            'question_number': session['questions_asked'] + 1,
+            'question_source': gemini.last_request_source,
         })
     except Exception as e:
         return jsonify({'error': f'Failed to process answer: {str(e)}'}), 500
@@ -141,12 +173,26 @@ def upload_audio():
     if f.filename == '':
         return jsonify({'error': 'Empty filename'}), 400
 
+    f.stream.seek(0, os.SEEK_END)
+    file_size = f.stream.tell()
+    f.stream.seek(0)
+    if file_size == 0:
+        return jsonify({'error': 'Uploaded audio file is empty'}), 400
+
     ext = os.path.splitext(f.filename)[1] or '.webm'
     filename = f"{uuid.uuid4().hex}{ext}"
     save_path = os.path.join(UPLOAD_DIR, filename)
     f.save(save_path)
 
-    return jsonify({'success': True, 'filename': filename})
+    mime_type = f.mimetype or ('audio/webm' if ext.lower() == '.webm' else 'audio/mpeg')
+    with open(save_path, 'rb') as audio:
+        transcript = gemini.transcribe_audio(audio.read(), mime_type)
+
+    return jsonify({
+        'success': True,
+        'filename': filename,
+        'transcript': transcript,
+    })
 
 
 @interview_bp.route('/audio/<filename>', methods=['GET'])

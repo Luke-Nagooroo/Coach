@@ -26,7 +26,8 @@ function RoleSelector({ userId, cvAnalysis, onRoleSelected }) {
         role,
         response.data.session_id,
         response.data.question,
-        response.data.question_number
+        response.data.question_number,
+        response.data.question_source
       );
     } catch (err) {
       alert('Failed to start interview: ' + (err.response?.data?.error || err.message));

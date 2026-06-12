@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 function FinalReview({ review, summary, onRestart }) {
+  const [showAnswers, setShowAnswers] = useState(false);
   const cleanItem = (value) => (value || '').replace(/\*\*/g, '').trim();
   const strengths = review?.strengths || [];
   const improvements = review?.improvements || [];
   const nextSteps = review?.next_steps || [];
+  const answers = summary?.answers || review?.answers || [];
 
   return (
     <div className="card interview-card">
@@ -16,7 +18,7 @@ function FinalReview({ review, summary, onRestart }) {
         </div>
 
         <div className="review-score">
-          <span>Overall</span>
+          <span>Interview Score</span>
           <strong>{Number(review?.overall_score ?? 0) || 0}</strong>
           <small>out of 100</small>
         </div>
@@ -54,6 +56,51 @@ function FinalReview({ review, summary, onRestart }) {
           </ul>
         </div>
       </div>
+
+      {answers.length > 0 && (
+        <div className="answer-review">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setShowAnswers((current) => !current)}
+            aria-expanded={showAnswers}
+          >
+            {showAnswers ? 'Hide Answer Review' : 'Review Answers'}
+          </button>
+
+          {showAnswers && (
+            <div className="answer-review__list">
+              {answers.map((item, index) => {
+                const transcript = cleanItem(item.transcript || item.answer);
+                const score = item.evaluation?.score;
+
+                return (
+                  <section className="answer-review__item" key={`answer-review-${index}`}>
+                    <div className="answer-review__heading">
+                      <span>Question {index + 1}</span>
+                      {score !== undefined && score !== null && (
+                        <strong>{score}/10</strong>
+                      )}
+                    </div>
+                    <h3>{item.question}</h3>
+                    <p className="answer-review__label">Recording transcript</p>
+                    <p className="answer-review__transcript">
+                      {transcript || 'No transcript was captured for this recording.'}
+                    </p>
+                    {item.audio_file && (
+                      <audio
+                        controls
+                        preload="metadata"
+                        src={`/api/interview/audio/${encodeURIComponent(item.audio_file)}`}
+                      />
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="action-row review-actions">
         <button className="primary-button" onClick={onRestart}>

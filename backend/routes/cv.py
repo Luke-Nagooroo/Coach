@@ -8,6 +8,15 @@ cv_bp = Blueprint('cv', __name__)
 # Store CV data in memory (in production, use a database)
 cv_storage = {}
 
+@cv_bp.route('/upload', methods=['GET'])
+def upload_cv_info():
+    """Explain the upload endpoint when it is opened directly in a browser."""
+    return jsonify({
+        'message': 'Upload CVs from the React app, or POST multipart/form-data here with a file field.',
+        'method': 'POST',
+        'field': 'file',
+    })
+
 @cv_bp.route('/upload', methods=['POST'])
 def upload_cv():
     """
